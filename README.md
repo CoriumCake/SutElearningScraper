@@ -18,8 +18,8 @@ SUT e-Learning Scraper is a Chrome extension that helps students download course
 
 The extension stores settings locally and only accesses SUT e-Learning pages needed to identify and download materials selected by the user.
 
-- Privacy policy: [privacy-policy.html](./privacy-policy.html)
-- Support page: [index.html](./index.html)
+- Privacy policy: [docs/privacy-policy.html](./docs/privacy-policy.html)
+- Support page: [docs/index.html](./docs/index.html)
 
 ## Project Links
 
