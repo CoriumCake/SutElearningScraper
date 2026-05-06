@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SUT e-Learning Scraper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f5f7fa;
+      color: #2d3748;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #e07b39, #f0a048);
+      color: white;
+      padding: 14px 16px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-text h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; }
+    .header-text p  { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+    .btn-settings {
+      width: 32px; height: 32px; border: none; border-radius: 8px;
+      background: rgba(255,255,255,0.18); color: white; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s; flex-shrink: 0;
+    }
+    .btn-settings:hover { background: rgba(255,255,255,0.32); }
+    .btn-settings svg { width: 17px; height: 17px; }
+
+    .settings-panel { display: none; background: #f5f7fa; }
+    .settings-panel.open { display: block; }
+    .settings-toolbar {
+      background: linear-gradient(135deg, #e07b39, #f0a048);
+      color: white;
+      padding: 14px 16px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .settings-title {
+      font-size: 15px; font-weight: 700; color: white;
+    }
+    .settings-subtitle {
+      font-size: 11px;
+      opacity: 0.9;
+      margin-top: 2px;
+    }
+    .settings-content {
+      padding: 14px;
+    }
+    .settings-back {
+      width: 32px; height: 32px; border: none; border-radius: 8px;
+      background: rgba(255,255,255,0.18); color: white; cursor: pointer;
+      padding: 0; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .settings-back:hover { background: rgba(255,255,255,0.32); color: rgba(255,255,255,0.95); }
+    .settings-group {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    .settings-label {
+      font-size: 12px; font-weight: 700; color: #4a5568;
+      margin-bottom: 10px;
+    }
+
+    .folder-row {
+      display: flex; align-items: stretch; gap: 0;
+      border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
+      background: white;
+    }
+    .folder-base {
+      padding: 8px 10px; background: #f7fafc;
+      border-right: 1px solid #e2e8f0;
+      font-size: 11px; font-family: 'Consolas', monospace;
+      color: #718096; white-space: nowrap;
+      display: flex; align-items: center;
+      max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .folder-input {
+      flex: 1; padding: 8px 10px; border: none; outline: none;
+      font-size: 12px; font-family: 'Consolas', monospace;
+      color: #2d3748; background: white; min-width: 0;
+    }
+    .btn-browse {
+      padding: 0 10px; border: none; border-left: 1px solid #e2e8f0;
+      background: #edf2f7; color: #4a5568; cursor: pointer;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-browse:hover { background: #e2e8f0; }
+    .settings-divider { height: 1px; background: #e2e8f0; margin: 14px 0; }
+
+    .check-group { display: flex; flex-direction: column; gap: 6px; }
+    .check-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0; background: transparent;
+      border: none; border-radius: 0;
+      cursor: pointer; font-size: 12px;
+    }
+    .check-item input { accent-color: #e07b39; }
+    .check-item-label { font-weight: 600; color: #2d3748; }
+    .check-item-desc  { font-size: 11px; color: #718096; margin-top: 1px; }
+
+    .btn-save-settings {
+      width: 100%; padding: 9px 12px;
+      background: linear-gradient(135deg, #e07b39, #f0a048);
+      color: white; border: none; border-radius: 7px;
+      font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-save-settings:hover { opacity: 0.88; }
+    .save-confirm { text-align: center; font-size: 11px; color: #38a169; margin-top: 6px; min-height: 16px; }
+
+    .main-body { padding: 14px; }
+
+    .status-box {
+      background: white; border: 1px solid #e2e8f0;
+      border-radius: 8px; padding: 12px 14px;
+      margin-bottom: 12px; font-size: 12px;
+    }
+    .status-box .label { color: #718096; margin-bottom: 4px; }
+    .status-box .value { font-weight: 600; color: #2d3748; word-break: break-all; }
+    .status-box .value.good    { color: #38a169; }
+    .status-box .value.bad     { color: #e53e3e; }
+    .status-box .value.neutral { color: #3182ce; }
+
+    .scan-result {
+      background: white; border: 1px solid #e2e8f0;
+      border-radius: 8px; padding: 12px 14px;
+      margin-bottom: 12px; display: none;
+    }
+    .scan-result h3 { font-size: 12px; font-weight: 700; margin-bottom: 8px; color: #4a5568; }
+    .section-list { max-height: 150px; overflow-y: auto; }
+    .section-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 0; border-bottom: 1px solid #f7fafc; font-size: 11px;
+    }
+    .section-item:last-child { border-bottom: none; }
+    .section-name { flex: 1; color: #4a5568; padding-right: 8px; }
+    .section-count {
+      background: #ebf8ff; color: #2b6cb0;
+      border-radius: 10px; padding: 1px 7px;
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+    }
+
+    .progress-box {
+      background: white; border: 1px solid #e2e8f0;
+      border-radius: 8px; padding: 12px 14px;
+      margin-bottom: 12px; display: none;
+    }
+    .progress-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px;
+    }
+    .progress-title { font-size: 12px; font-weight: 600; color: #2d3748; }
+    .progress-pct   { font-size: 11px; color: #718096; }
+    .progress-bar-wrap {
+      height: 8px; background: #edf2f7;
+      border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, #e07b39, #f0a048);
+      border-radius: 4px; transition: width 0.3s ease; width: 0%;
+    }
+    .progress-status { font-size: 11px; color: #718096; min-height: 14px; }
+
+    .log-box {
+      background: #1a202c; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 12px;
+      max-height: 110px; overflow-y: auto; display: none;
+    }
+    .log-line { font-size: 10px; font-family: 'Consolas', monospace; color: #a0aec0; line-height: 1.5; }
+    .log-line.ok   { color: #68d391; }
+    .log-line.err  { color: #fc8181; }
+    .log-line.info { color: #63b3ed; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; padding: 9px 12px; border: none; border-radius: 7px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover   { opacity: 0.88; }
+    .btn:active  { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary   { background: linear-gradient(135deg, #e07b39, #f0a048); color: white; }
+    .btn-secondary { background: #edf2f7; color: #4a5568; }
+    .btn-danger    { background: #e53e3e; color: white; border: 1px solid #e53e3e; }
+
+    .footer {
+      padding: 0 14px 14px; font-size: 10px; color: #a0aec0; text-align: center;
+    }
+    .footer span { font-family: 'Consolas', monospace; }
+    .settings-panel .footer { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="header" id="main-header">
+    <div class="header-text">
+      <h1>SUT e-Learning Scraper</h1>
+      <p>Download course materials into organized folders</p>
+    </div>
+    <button class="btn-settings" id="btn-settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="settings-panel" id="settings-panel">
+    <div class="settings-toolbar">
+      <div>
+        <div class="settings-title">Settings</div>
+        <div class="settings-subtitle">Adjust download location and display preferences</div>
+      </div>
+      <button class="settings-back" id="btn-back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="settings-content">
+    <div class="settings-group">
+      <div class="settings-label">Save Location</div>
+      <div class="folder-row">
+        <div class="folder-base" id="folder-base-label">Downloads\</div>
+        <input class="folder-input" id="setting-subfolder" type="text" placeholder="SUT-eLearning" spellcheck="false" />
+        <button class="btn-browse" id="btn-browse">Browse</button>
+      </div>
+    </div>
+
+
+    <div class="settings-group">
+      <div class="settings-label">Download Format</div>
+      <div class="check-group">
+        <label class="check-item">
+          <input type="checkbox" id="make-zip" />
+          <div>
+            <div class="check-item-label">Pack into ZIP archive</div>
+            <div class="check-item-desc">Single .zip file named after the course</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-label">Display</div>
+      <div class="check-group">
+        <label class="check-item">
+          <input type="checkbox" id="show-log" />
+          <div>
+            <div class="check-item-label">Show download log</div>
+            <div class="check-item-desc">Display the live log on the main tab during downloads</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn-save-settings" id="btn-save-settings">Save Settings</button>
+    <div class="save-confirm" id="save-confirm"></div>
+    </div>
+  </div>
+
+  <div class="main-body" id="main-body">
+<div class="scan-result" id="scan-result">
+      <h3 id="subject-name">Subject Name</h3>
+      <div class="section-list" id="section-list"></div>
+      <div style="margin-top:8px;font-size:11px;color:#718096;">
+        Total: <strong id="total-files">0</strong> files across <strong id="total-sections">0</strong> sections
+      </div>
+    </div>
+
+    <div class="progress-box" id="progress-box">
+      <div class="progress-header">
+        <span class="progress-title" id="progress-title">Downloading...</span>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <div class="progress-status" id="progress-status"></div>
+    </div>
+
+    <div class="log-box" id="log-box"></div>
+
+    <div class="btn-row" id="btn-row-main">
+      <button class="btn btn-primary" id="btn-download" disabled>Download All</button>
+    </div>
+
+    <div class="btn-row" id="btn-row-running" style="display:none">
+      <button class="btn btn-danger" id="btn-cancel">Cancel Download</button>
+    </div>
+  </div>
+
+  <div class="footer">Saving to: <span id="footer-path">-</span></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
+
+
