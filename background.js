@@ -2,6 +2,7 @@ const EMPTY_STATE = {
   status: 'idle',
   total: 0,
   done: 0,
+  skipped: 0,
   failed: 0,
   currentFile: '',
   log: [],
@@ -117,6 +118,15 @@ async function loadExistingDownloadPaths() {
   return paths;
 }
 
+function invalidateExistingDownloadPaths() {
+  existingDownloadPaths = null;
+}
+
+async function hasExistingDownloadPath(filePath) {
+  const existingPaths = await loadExistingDownloadPaths();
+  return existingPaths.has(normalizeRelativePath(filePath));
+}
+
 async function filterExistingItems(items) {
   const existingPaths = await loadExistingDownloadPaths();
   const kept = [];
@@ -124,7 +134,7 @@ async function filterExistingItems(items) {
   for (const item of items) {
     const relPath = normalizeRelativePath(item.filename);
     if (existingPaths.has(relPath)) {
-      state.done++;
+      state.skipped++;
       pushLog('info', `Skipped ${item.name} (already exists)`);
       continue;
     }
@@ -134,6 +144,12 @@ async function filterExistingItems(items) {
   await saveState();
   broadcast();
   return kept;
+}
+
+async function refilterExistingItemsAfterRefresh(items) {
+  invalidateExistingDownloadPaths();
+  await new Promise(r => setTimeout(r, 250));
+  return filterExistingItems(items);
 }
 
 function pPool(limit) {
@@ -172,6 +188,16 @@ function dataUriToBytes(url) {
   }
   const payload = url.split(',')[1] || '';
   return new TextEncoder().encode(decodeURIComponent(payload));
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 async function fetchFileBytes(url) {
@@ -300,6 +326,7 @@ async function resolveAllTasks(runId, job) {
   state.status = 'resolving';
   state.total = job.tasks.length;
   state.done = 0;
+  state.skipped = 0;
   state.failed = 0;
   state.currentFile = 'Loading...';
   pushLog('info', 'Loading in background...');
@@ -482,15 +509,10 @@ async function runZipPhase(runId, items, job) {
   broadcast();
 
   const zipData = buildZip(entries);
-  const blob = new Blob([zipData], { type: 'application/zip' });
-  const blobUrl = URL.createObjectURL(blob);
+  const zipUrl = `data:application/zip;base64,${bytesToBase64(zipData)}`;
   const zipFilename = `${job.subfolder}/${job.courseName}.zip`;
 
-  try {
-    await downloadViaChrome({ url: blobUrl, filename: zipFilename, name: `${job.courseName}.zip` }, runId);
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
+  await downloadViaChrome({ url: zipUrl, filename: zipFilename, name: `${job.courseName}.zip` }, runId);
 }
 
 async function finalizeRun(runId) {
@@ -498,7 +520,7 @@ async function finalizeRun(runId) {
   state.status = state.status === 'cancelled' ? 'cancelled' : 'done';
   state.finishedAt = Date.now();
   state.currentFile = '';
-  pushLog('info', `Completed: ${state.done} ok, ${state.failed} failed.`);
+  pushLog('info', `Completed: ${state.done} saved, ${state.skipped} skipped, ${state.failed} failed.`);
   await saveState();
   broadcast();
   isRunning = false;
@@ -508,14 +530,50 @@ async function runJob(runId, job) {
   isRunning = true;
 
   try {
+    if (job.makeZip) {
+      const zipFilename = `${job.subfolder}/${job.courseName}.zip`;
+      if (await hasExistingDownloadPath(zipFilename)) {
+        state.status = 'done';
+        state.total = 1;
+        state.currentFile = '';
+        state.done = 0;
+        state.skipped = 1;
+        state.failed = 0;
+        state.finishedAt = Date.now();
+        pushLog('info', `Skipped ${job.courseName}.zip (already exists)`);
+        await saveState();
+        broadcast();
+        isRunning = false;
+        return;
+      }
+    }
+
     const resolvedItems = await resolveAllTasks(runId, job);
     if (runId !== currentRunId || state.status === 'cancelled') return;
 
-    const items = await filterExistingItems(resolvedItems);
+    // Only skip already-downloaded source files for folder mode.
+    // ZIP mode should still work after a folder download, because the archive
+    // is a separate output artifact from the extracted files.
+    let items = job.makeZip ? resolvedItems : await filterExistingItems(resolvedItems);
     if (runId !== currentRunId || state.status === 'cancelled') return;
+
+    // Chrome's download-history existence metadata can lag briefly after the
+    // user deletes files or folders. If everything was skipped, refresh once
+    // before concluding that nothing needs downloading.
+    if (!job.makeZip && resolvedItems.length > 0 && items.length === 0) {
+      pushLog('info', 'Rechecking deleted files...');
+      await saveState();
+      broadcast();
+      items = await refilterExistingItemsAfterRefresh(resolvedItems);
+      if (runId !== currentRunId || state.status === 'cancelled') return;
+    }
 
     if (items.length === 0) {
       state.status = 'done';
+      state.total = resolvedItems.length;
+      state.done = 0;
+      state.failed = 0;
+      state.finishedAt = Date.now();
       state.currentFile = '';
       pushLog('info', 'Nothing left to download after duplicate check.');
       await saveState();

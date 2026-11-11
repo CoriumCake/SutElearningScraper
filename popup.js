@@ -3,6 +3,10 @@ const $ = id => document.getElementById(id);
 
 let scannedData = null;
 let downloadsBasePath = null;
+let sectionStatusCacheKey = '';
+let sectionStatusCache = null;
+let sectionStatusRunId = 0;
+let sectionStatusPendingKey = '';
 
 
 const DEFAULTS = {
@@ -11,6 +15,12 @@ const DEFAULTS = {
   showLog: false,
 };
 let settings = { ...DEFAULTS };
+
+function invalidateSectionStatusCache() {
+  sectionStatusCacheKey = '';
+  sectionStatusCache = null;
+  sectionStatusPendingKey = '';
+}
 
 async function loadSettings() {
   const s = await chrome.storage.local.get(['scraperSettings', 'downloadsBasePath']);
@@ -29,6 +39,7 @@ async function saveSettings() {
     showLog:   $('show-log').checked,
   };
   await chrome.storage.local.set({ scraperSettings: settings });
+  invalidateSectionStatusCache();
   updateFolderPreview();
   updateFooter();
   updateLogVisibility();
@@ -125,6 +136,15 @@ function sanitize(name) {
     .substring(0, 80);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function filenameFromUrl(url) {
   try {
     const raw = url.split('?')[0].split('/').pop();
@@ -139,6 +159,79 @@ function guessExt(url, name) {
   const nameExt = name.split('.').pop().toLowerCase();
   if (known.includes(nameExt)) return '';
   return '.pdf';
+}
+
+function normalizeRelativePath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function downloadHistoryToRelativePath(absPath) {
+  const normalized = String(absPath || '').replace(/\\/g, '/');
+  const marker = '/Downloads/';
+  const idx = normalized.toLowerCase().indexOf(marker.toLowerCase());
+  if (idx >= 0) return normalized.slice(idx + marker.length);
+  return normalized.split('/').slice(-3).join('/');
+}
+
+async function loadExistingDownloadPaths() {
+  const paths = new Set();
+  const items = await chrome.downloads.search({ state: 'complete' });
+  items.forEach(item => {
+    if (!item || !item.filename) return;
+    if (item.exists === false) return;
+    paths.add(normalizeRelativePath(downloadHistoryToRelativePath(item.filename)));
+  });
+  return paths;
+}
+
+function buildScanCacheKey(data, tabId) {
+  const sectionsKey = (data.sections || []).map(sec => {
+    const filesKey = (sec.files || []).map(file => [file.type || '', file.name || '', file.url || ''].join('|')).join('~');
+    return `${sec.name || 'General'}:${filesKey}`;
+  }).join('||');
+  return [tabId, settings.subfolder || 'SUT-eLearning', data.courseName || 'Course', sectionsKey].join('::');
+}
+
+async function resolveSectionItems(tabId, courseName, section) {
+  const sectionFolder = sanitize(section.name || 'General');
+  const taskKeys = new Set();
+  const pool = pPool(4);
+
+  const results = await Promise.all((section.files || []).map(file =>
+    pool(async () => {
+      const taskKey = [sectionFolder, file.type || '', file.url || '', file.name || ''].join('::');
+      if (taskKeys.has(taskKey)) return [];
+      taskKeys.add(taskKey);
+      try {
+        return await resolveFile(tabId, file, courseName, sectionFolder);
+      } catch (_) {
+        return [];
+      }
+    })
+  ));
+
+  return results.flat().filter(item => item && !item._skip);
+}
+
+async function computeSectionStatuses(data, tabId) {
+  const courseName = sanitize(data.courseName || 'Course');
+  const existingPaths = await loadExistingDownloadPaths();
+
+  return Promise.all((data.sections || []).map(async (section) => {
+    const items = await resolveSectionItems(tabId, courseName, section);
+    const totalItems = items.length;
+    const existingItems = items.filter(item => existingPaths.has(normalizeRelativePath(item.filename))).length;
+    return {
+      totalItems,
+      existingItems,
+      isComplete: totalItems > 0 && existingItems === totalItems,
+    };
+  }));
+}
+
+function updateDownloadButtonAvailability() {
+  const selectable = document.querySelector('.sec-check:not(:disabled):checked');
+  $('btn-download').disabled = !scannedData || !selectable;
 }
 
 
@@ -158,8 +251,7 @@ async function autoScan() {
   if (!data?.sections) return;
 
   scannedData = data;
-  renderScanResult(data);
-  $('btn-download').disabled = false;
+  renderScanResult(data, tab.id);
 }
 
 function startAutoScan() {
@@ -172,7 +264,7 @@ function stopAutoScan() {
   if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
 }
 
-function renderScanResult(data) {
+function renderScanResultRows(data, sectionStatuses = null) {
   const list = $('section-list');
   $('subject-name').textContent = data.courseName || 'Course';
   const prevChecked = {};
@@ -183,23 +275,76 @@ function renderScanResult(data) {
   data.sections.forEach((sec, i) => {
     const isTextOnly = sec.files.length === 1 && sec.files[0].type === 'text';
     const count = sec.files.length;
-    const label = isTextOnly ? '.md' : `${count} file${count !== 1 ? 's' : ''}`;
-    const checked = prevChecked[i] !== undefined ? prevChecked[i] : true;
+    const status = sectionStatuses?.[i] || null;
+    const isComplete = !!status?.isComplete;
+    const existingItems = status?.existingItems || 0;
+    const totalItems = status?.totalItems || 0;
+    let label = isTextOnly ? '.md' : `${count} file${count !== 1 ? 's' : ''}`;
+    if (isComplete) label = 'Downloaded';
+    else if (sectionStatuses && totalItems > 0 && existingItems > 0) label = `${existingItems}/${totalItems} downloaded`;
+
+    const checked = isComplete ? false : (prevChecked[i] !== undefined ? prevChecked[i] : true);
+    const disabled = isComplete ? 'disabled' : '';
     const row = document.createElement('div');
-    row.className = 'section-item';
+    row.className = `section-item${isComplete ? ' complete' : ''}`;
     row.innerHTML = `
-      <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;min-width:0;overflow:hidden;">
-        <input type="checkbox" class="sec-check" data-idx="${i}" ${checked ? 'checked' : ''}
+      <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:${isComplete ? 'default' : 'pointer'};min-width:0;overflow:hidden;">
+        <input type="checkbox" class="sec-check" data-idx="${i}" ${checked ? 'checked' : ''} ${disabled}
                style="accent-color:#e07b39;flex-shrink:0;" />
-        <span class="section-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sec.name || 'General'}</span>
+        <span class="section-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(sec.name || 'General')}</span>
       </label>
-      <span class="section-count" style="${isTextOnly ? 'background:#f0fff4;color:#276749' : ''}">${label}</span>`;
+      <span class="section-count${isComplete ? ' complete' : ''}" style="${isTextOnly && !isComplete ? 'background:#f0fff4;color:#276749' : ''}">${escapeHtml(label)}</span>`;
     list.appendChild(row);
     total += count;
   });
   $('total-files').textContent = total;
   $('total-sections').textContent = data.sections.length;
   $('scan-result').style.display = 'block';
+  list.querySelectorAll('.sec-check').forEach(cb => cb.addEventListener('change', updateDownloadButtonAvailability));
+  updateDownloadButtonAvailability();
+}
+
+function renderScanResult(data, tabId) {
+  const runId = ++sectionStatusRunId;
+  const cacheKey = buildScanCacheKey(data, tabId);
+  const note = $('section-status-note');
+
+  if (settings.makeZip) {
+    renderScanResultRows(data, null);
+    if (note) note.textContent = '';
+    return;
+  }
+
+  renderScanResultRows(data, sectionStatusCacheKey === cacheKey ? sectionStatusCache : null);
+
+  if (sectionStatusCacheKey === cacheKey && sectionStatusCache) {
+    if (note) note.textContent = '';
+    return;
+  }
+
+  if (sectionStatusPendingKey === cacheKey) {
+    if (note) note.textContent = 'Checking downloaded files...';
+    return;
+  }
+
+  sectionStatusPendingKey = cacheKey;
+  if (note) note.textContent = 'Checking downloaded files...';
+
+  computeSectionStatuses(data, tabId)
+    .then((statuses) => {
+      if (runId !== sectionStatusRunId || !statuses) return;
+
+      sectionStatusCacheKey = cacheKey;
+      sectionStatusCache = statuses;
+      sectionStatusPendingKey = '';
+      renderScanResultRows(data, statuses);
+      if (note) note.textContent = '';
+    })
+    .catch(() => {
+      if (runId !== sectionStatusRunId) return;
+      sectionStatusPendingKey = '';
+      if (note) note.textContent = '';
+    });
 }
 
 
@@ -367,11 +512,11 @@ async function startDownload() {
 
   const total = tasks.length;
   appendLog({ type: 'info', msg: `Handing ${total} items to background...` });
-  renderProgress({ status: 'resolving', total, done: 0, failed: 0, currentFile: 'Loading...', log: [] });
+  renderProgress({ status: 'resolving', total, done: 0, skipped: 0, failed: 0, currentFile: 'Loading...', log: [] });
 
   if (total === 0) {
     appendLog({ type: 'err', msg: 'No downloadable files selected.' });
-    renderProgress({ status: 'done', total: 0, done: 0, failed: 0, currentFile: '', log: [] });
+    renderProgress({ status: 'done', total: 0, done: 0, skipped: 0, failed: 0, currentFile: '', log: [] });
     return;
   }
 
@@ -448,6 +593,7 @@ function onBgMessage(msg) {
   newEntries.forEach(entry => appendLog(entry));
 
   if (state.status === 'done' || state.status === 'cancelled') {
+    if (state.status === 'done') invalidateSectionStatusCache();
     chrome.runtime.onMessage.removeListener(onBgMessage);
   }
 }
@@ -467,7 +613,7 @@ function closeSettings() {
   document.querySelector('.footer').style.display = 'block';
 }
 function renderProgress(state) {
-  const { status, total, done, failed, currentFile } = state;
+  const { status, total, done, skipped = 0, failed, currentFile } = state;
   const finished = status === 'done' || status === 'cancelled';
   const pct = total > 0 ? Math.round((done + failed) / total * 100) : 0;
 
@@ -494,7 +640,7 @@ function renderProgress(state) {
     progressStatus.textContent = currentFile ? `Downloading ${currentFile}` : '';
   } else if (finished) {
     progressTitle.textContent = status === 'cancelled' ? 'Cancelled' : 'Done';
-    progressStatus.textContent = `${done} saved, ${failed} failed`;
+    progressStatus.textContent = `${done} saved, ${skipped} skipped, ${failed} failed`;
   }
 
   btnRowMain.style.display = finished ? 'flex' : 'none';

@@ -29,5 +29,5 @@ The extension stores settings locally and only accesses SUT e-Learning pages nee
 
 ## Local Files
 
-- Extension package: [dist/sut-elearning-scraper-v1.0.1.zip](dist/sut-elearning-scraper-v1.0.1.zip)
+- Extension package: [dist/sut-elearning-scraper-v1.0.2.zip](dist/sut-elearning-scraper-v1.0.2.zip)
 - Manifest: [manifest.json](manifest.json)
