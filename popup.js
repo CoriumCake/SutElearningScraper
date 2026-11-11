@@ -149,7 +149,7 @@ async function autoScan() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
   if (!tab) return;
   const url = tab.url || '';
-  if (!url.includes('elearning5.sut.ac.th') || !url.includes('/course/view.php')) return;
+  if (!/^https:\/\/elearning5?\.sut\.ac\.th\//.test(url) || !url.includes('/course/view.php')) return;
 
   let data;
   try {

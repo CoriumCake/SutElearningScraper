@@ -8,7 +8,7 @@ SUT e-Learning Scraper is a browser extension that helps users download course m
 
 The extension may process:
 
-- Course page content from https://elearning5.sut.ac.th/*
+- Course page content from https://elearning.sut.ac.th/* and https://elearning5.sut.ac.th/*
 - Links to downloadable course materials
 - User-selected extension settings such as folder name and ZIP preference
 

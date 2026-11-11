@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "SUT e-Learning Scraper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Download all course materials from SUT e-Learning into organized folders",
   "permissions": [
     "downloads",
     "storage"
   ],
   "host_permissions": [
+    "https://elearning.sut.ac.th/*",
     "https://elearning5.sut.ac.th/*"
   ],
   "action": {
@@ -24,15 +25,27 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://elearning5.sut.ac.th/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://elearning.sut.ac.th/*",
+        "https://elearning5.sut.ac.th/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup.html", "popup.js", "icons/*.png"],
-      "matches": ["https://elearning5.sut.ac.th/*"]
+      "resources": [
+        "popup.html",
+        "popup.js",
+        "icons/*.png"
+      ],
+      "matches": [
+        "https://elearning.sut.ac.th/*",
+        "https://elearning5.sut.ac.th/*"
+      ]
     }
   ],
   "icons": {

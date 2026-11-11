@@ -12,7 +12,8 @@ SUT e-Learning Scraper is a Chrome extension that helps students download course
 
 ## Supported Site
 
-- `https://elearning5.sut.ac.th/*`
+- `https://elearning.sut.ac.th/*`
+- `https://elearning5.sut.ac.th/*` (legacy domain)
 
 ## Privacy
 
@@ -28,5 +29,5 @@ The extension stores settings locally and only accesses SUT e-Learning pages nee
 
 ## Local Files
 
-- Extension package: [dist/sut-elearning-scraper-v1.0.0.zip](C:/Users/maple/Documents/ElearningScraper/dist/sut-elearning-scraper-v1.0.0.zip)
-- Manifest: [manifest.json](C:/Users/maple/Documents/ElearningScraper/manifest.json:1)
+- Extension package: [dist/sut-elearning-scraper-v1.0.1.zip](dist/sut-elearning-scraper-v1.0.1.zip)
+- Manifest: [manifest.json](manifest.json)

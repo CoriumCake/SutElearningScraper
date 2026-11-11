@@ -18,7 +18,8 @@ Features:
 
 This extension works only on:
 
-- https://elearning5.sut.ac.th/*
+- https://elearning.sut.ac.th/*
+- https://elearning5.sut.ac.th/* (legacy domain)
 
 The extension is designed for user-initiated downloads only. It does not sell user data, does not run remote code, and stores settings locally in the browser.
 
@@ -38,7 +39,7 @@ Required to save the user's local extension settings, including the destination 
 
 ### Host Permission Justification
 
-Required to access https://elearning5.sut.ac.th/* so the extension can read course pages, identify downloadable materials, and resolve file links for the signed-in user.
+Required to access https://elearning.sut.ac.th/* (and the legacy https://elearning5.sut.ac.th/*) so the extension can read course pages, identify downloadable materials, and resolve file links for the signed-in user.
 
 ### Remote Code Use Justification
 
@@ -46,4 +47,4 @@ This extension does not use remote code. All executable logic is packaged within
 
 ### Data Usage Statement
 
-The extension processes course page content on https://elearning5.sut.ac.th only to identify and download materials selected by the user. Settings are stored locally in the browser. The extension does not sell data, use data for advertising, or transfer data to third parties except as required to retrieve files from the SUT e-Learning site at the user's request.
+The extension processes course page content on https://elearning.sut.ac.th (and the legacy https://elearning5.sut.ac.th) only to identify and download materials selected by the user. Settings are stored locally in the browser. The extension does not sell data, use data for advertising, or transfer data to third parties except as required to retrieve files from the SUT e-Learning site at the user's request.
